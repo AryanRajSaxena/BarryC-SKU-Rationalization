@@ -22,6 +22,74 @@ REQUIRED_COLUMNS = {
 STATUS_ORDER = {"Mismatch": 0, "Partial Match": 1, "Match": 2}
 
 
+ALLOWED_COLUMNS = [
+    "Material_Code",
+    "Legislation",
+    "Min_Dry_Cocoa_Solids",
+    "Dry_Milk_Solids",
+    "MilkFat",
+    "SKU_Tag_Expanded",
+    "Packaging_Info_Bag_Box",
+    "Packaging_Info_Palletss",
+    "Dry_Fat_Free_Cocoa_Solids",
+    "Material_Group",
+    "components_Specifications",
+    "Sugars_g",
+    "Protein_g",
+    "Total_Fat_g",
+    "Contains_Milk_Proteins",
+    "Contains_Egg_Products",
+    "Contains_Soy_Proteins",
+    "Contains_Wheat",
+    "Contains_Rye",
+    "Contains_Fish",
+    "Contains_Crustacean_And_Shell_Fish",
+    "Contains_Hazelnuts_Almonds",
+    "Contains_Peanuts",
+    "Contains_Sulphite_E220_E227",
+    "Contains_Celery",
+    "Contains_Sesame_Products",
+    "Suitable_For_Vegetarians",
+    "Suitable_For_Vegans",
+    "Contains_Peanut_Oil",
+    "Contains_Mustard",
+    "Contains_Molluscs",
+    "Contains_Lupin",
+    "Contains_Buckwheat",
+    "Base_Type",
+    "Moulding_Type",
+    "Product_Type",
+    "Colour_TF",
+    "Kosher_Certificate",
+    "Country_Claim",
+    "Shelflife",
+    "Packaging_Info",
+    "Brand",
+    "Commercial_Name",
+    "Contains_Hydrogenated",
+    "Hydrogenated",
+    "Smallest_Unit_Weight_In_Kg",
+    "Units_Per_Pallet",
+    "Certification_Tag",
+    "Colour_Type_Tag",
+    "Flavor_Type_Tag",
+    "Shape",
+    "SKU_Material_Tag",
+    "Origin",
+    "Sku_Ingredient_Tag",
+    "Is_Organic",
+    "pH",
+    "Normalised_Yield_Pa",
+    "Normalised_Linear_Viscosity_mPaS",
+    "Normalised_Casson_Mpa_S",
+    "Brookfield_40C_S27_20_RPM",
+    "Fineness_Micrometer",
+    "Dimensions_Length",
+    "Dimensions_Width",
+    "Dimensions_Count_lb",
+]
+
+
 def _ensure_required_columns(df: pd.DataFrame) -> None:
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
@@ -79,6 +147,18 @@ def load_dataset(file_path) -> Tuple[pd.DataFrame, Any, str]:
     except Exception as exc:
         raise gr.Error(f"Unable to read the uploaded file: {exc}") from exc
 
+    allowed_cols = ALLOWED_COLUMNS
+    if allowed_cols:
+        present_allowed = [c for c in allowed_cols if c in df.columns]
+        if not present_allowed:
+            raise gr.Error(
+                "None of the expected columns were found in the uploaded file."
+            )
+        df = df[present_allowed]
+        missing_allowed = [c for c in allowed_cols if c not in df.columns]
+    else:
+        missing_allowed = []
+
     _ensure_required_columns(df)
 
     if "Legislation" not in df.columns:
@@ -92,6 +172,10 @@ def load_dataset(file_path) -> Tuple[pd.DataFrame, Any, str]:
     )
 
     message = f"Loaded {len(df):,} rows with {df.shape[1]} columns."
+    if allowed_cols:
+        message += f" Using {len(present_allowed)} allowed column(s)."
+        if missing_allowed:
+            message += f" {len(missing_allowed)} expected column(s) were not found."
     return df, gr.update(choices=legislation_options, value=legislation_options[0]), message
 
 
