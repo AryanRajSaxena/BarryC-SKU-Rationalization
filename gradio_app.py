@@ -201,13 +201,27 @@ def _prepare_similarity(
             "No comparable SKUs share the required grouping attributes with the anchor material."
         )
 
+    base_non_spec_cols = [c for c in matches.columns if c != "components_Specifications"]
     matches_expanded = process_specifications(matches, material_code, df)
+    spec_columns = [
+        c
+        for c in matches_expanded.columns
+        if c not in base_non_spec_cols and c != "Material_Code"
+    ]
+
     anchor_idx = matches_expanded.index[
         matches_expanded["Material_Code"] == material_code
     ][0]
 
+    gower_input = matches_expanded.copy()
+    obj_cols = gower_input.select_dtypes(include="object").columns
+    for col in obj_cols:
+        gower_input[col] = gower_input[col].apply(
+            lambda v: v.strip().lower() if isinstance(v, str) else v
+        )
+
     scores = gower_similarity(
-        matches_expanded,
+        gower_input,
         query_idx=anchor_idx,
         boost="count",
         normalize=True,
@@ -229,6 +243,7 @@ def _prepare_similarity(
     )
 
     results = results.loc[results.index != anchor_idx]
+    results = results[results["Material_Code"].astype(str) != material_code]
 
     if legislation_filter and legislation_filter != "All":
         results = results[results["Legislation"].astype(str) == legislation_filter]
@@ -262,10 +277,12 @@ def _prepare_similarity(
         "anchor_idx": anchor_idx,
         "anchor_code": material_code,
         "result_indices": results.index.tolist(),
+        "spec_columns": spec_columns,
     }
 
     candidate_codes = results["Material_Code"].tolist()
-    message = f"Found {len(display_df)} similar SKUs."
+    spec_msg = f" with {len(spec_columns)} component field(s)" if spec_columns else ""
+    message = f"Found {len(display_df)} similar SKUs{spec_msg}."
     return (
         display_df.reset_index(drop=True),
         state,
@@ -286,6 +303,7 @@ def _build_comparison(
     scores: pd.DataFrame = search_state["scores"]
     anchor_idx = search_state["anchor_idx"]
     anchor_code = search_state["anchor_code"]
+    spec_columns = search_state.get("spec_columns", [])
 
     candidate_rows = matches_expanded[
         matches_expanded["Material_Code"] == selected_code
@@ -306,11 +324,12 @@ def _build_comparison(
         "Legislation",
     ]
 
-    comparison_columns = base_columns + [
+    other_columns = [
         c
         for c in matches_expanded.columns
-        if c not in base_columns + ["Material_Code"]
+        if c not in base_columns + ["Material_Code"] + spec_columns
     ]
+    comparison_columns = base_columns + spec_columns + other_columns
 
     rows = []
     for col in comparison_columns:
@@ -339,8 +358,9 @@ def _build_comparison(
     distance = scores.loc[candidate_idx, "distance"]
     used = scores.loc[candidate_idx, "used_count"]
 
+    spec_note = " (no component specs detected)" if not spec_columns else ""
     summary = (
-        f"**{anchor_code} vs {selected_code}**  \n"
+        f"**{anchor_code} vs {selected_code}**{spec_note}  \n"
         f"Score: {score:.4f} • Similarity: {similarity:.4f} • Distance: {distance:.4f} \n"
         f"Evidence Columns Used: {int(used)}"
     )
